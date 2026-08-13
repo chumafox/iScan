@@ -1,0 +1,37 @@
+{
+  "all_values": {
+    "ProductType": "iPhone16,1",
+    "ProductVersion": "17.4.1",
+    "BuildVersion": "21E236",
+    "DeviceName": "John's iPhone 15 Pro",
+    "SerialNumber": "C3XNHF2KMT4P",
+    "UniqueDeviceID": "00008130-001234567890ABCDEF",
+    "InternationalMobileEquipmentIdentity": "358293741234567",
+    "UniqueChipID": 1234567890123,
+    "WiFiAddress": "a4:c3:f0:12:34:56",
+    "BluetoothAddress": "a4:c3:f0:12:34:57",
+    "BasebandVersion": "2.54.01",
+    "ActivationState": "Activated",
+    "TotalDataCapacity": 128000000000,
+    "TotalDataAvailable": 45000000000,
+    "RegionInfo": "LL/A",
+    "ModelNumber": "MU7E3",
+    "SIMStatus": "kCTSIMSupportSIMStatusReady",
+    "kCTPostponementStatus": "kCTPostponementStatusActivated"
+
+  },
+  "battery": {
+    "CycleCount": 127,
+    "DesignCapacity": 3274,
+    "FullChargeCapacity": 3120,
+    "BatterySerialNumber": "F9RNXBT0ABCD",
+    "IsCharging": false
+  },
+  "gestalt": {
+    "MainboardSerialNumber": "MLB-C3XNHF2KMT4P",
+    "CoverboardSerialNumber": "DISP-LG-7812345",
+    "RearFacingCameraModuleSerialNumber": "CAM-REAR-A1234",
+    "FrontFacingCameraModuleSerialNumber": "CAM-FRONT-B5678",
+    "MesaSerialNumber": "MESA-FACEID-C9012"
+  }
+}

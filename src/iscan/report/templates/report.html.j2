@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iscan - {{ r.device.device_name or 'iOS Device' }}</title>
+    <style>
+        :root {
+            --sf-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --sf-mono: "SF Mono", SFMono-Regular, ui-monospace, Monaco, Consolas, monospace;
+            
+            --bg: #f5f5f7;
+            --panel-bg: #ffffff;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --border: #d2d2d7;
+            --accent: #0071e3;
+            --accent-green: #34c759;
+            --accent-red: #ff3b30;
+            --accent-orange: #ff9500;
+            --row-hover: #f5f5f7;
+        }
+
+        html.dark {
+            --bg: #000000;
+            --panel-bg: #161617;
+            --text-primary: #f5f5f7;
+            --text-secondary: #86868b;
+            --border: #323236;
+            --accent: #2997ff;
+            --accent-green: #30d158;
+            --accent-red: #ff453a;
+            --accent-orange: #ff9f0a;
+            --row-hover: #1c1c1e;
+        }
+
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--sf-font);
+            background-color: var(--bg);
+            color: var(--text-primary);
+            padding: 4rem 2rem;
+            line-height: 1.45;
+            letter-spacing: -0.01em;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 3rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-title h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
+            margin-bottom: 0.35rem;
+        }
+
+        .header-meta {
+            font-size: 0.85rem;
+            font-family: var(--sf-mono);
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+        }
+
+        .theme-toggle {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 50%;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.15s;
+        }
+        .theme-toggle:hover {
+            background-color: var(--row-hover);
+        }
+
+        html.dark .sun-icon { display: block; }
+        html.dark .moon-icon { display: none; }
+        html:not(.dark) .sun-icon { display: none; }
+        html:not(.dark) .moon-icon { display: block; }
+
+
+        .section {
+            position: relative;
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+
+        .section::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url("file:///Users/jenya/Projects/iScan/ChatGPT Image 10 авг. 2026 г., 16_29_16.png");
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 280px;
+            opacity: 0.05;
+            pointer-events: none;
+            z-index: 2; /* Set higher than row background so it doesn't get covered on hover */
+        }
+
+        html.dark .section::before {
+            display: none; /* Watermark is disabled in dark theme */
+        }
+
+        .section-header {
+            padding: 1rem 1.25rem 0.6rem 1.25rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+            transition: background-color 0.1s;
+        }
+
+
+
+
+
+        .row:last-child {
+            border-bottom: none;
+        }
+        .row:hover {
+            background-color: var(--row-hover);
+        }
+
+        .label {
+            font-family: var(--sf-font);
+            color: var(--text-primary);
+            font-weight: 400;
+            flex-shrink: 0; /* Prevents labels from squishing on mobile */
+            margin-right: 1.5rem; /* Guarantees gap between label and value */
+        }
+
+        .value {
+            font-family: var(--sf-mono);
+            font-size: 0.825rem;
+            color: var(--text-primary);
+            font-weight: 400;
+            text-align: right;
+            word-break: break-all; /* Allows long serials to wrap cleanly */
+        }
+
+        .muted-value {
+            color: var(--text-secondary);
+            font-size: 0.775rem;
+            margin-left: 0.35rem;
+            font-weight: 400;
+        }
+
+        .status-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+        .status-icon.normal {
+            color: var(--accent-green);
+        }
+        .status-icon.warning {
+            color: var(--accent-orange);
+        }
+
+
+        footer {
+            margin-top: 4rem;
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+        footer img {
+            width: 120px;
+            opacity: 0.3;
+            transition: opacity 0.15s;
+        }
+        footer img:hover {
+            opacity: 0.55;
+        }
+        html.dark footer img {
+            filter: invert(1);
+        }
+
+        /* Responsive Mobile Layout */
+        @media (max-width: 480px) {
+            body {
+                padding: 2rem 1rem;
+            }
+            header {
+                flex-direction: column;
+                gap: 1.25rem;
+                align-items: stretch;
+                margin-bottom: 2rem;
+            }
+            .theme-toggle {
+                align-self: flex-start;
+            }
+            .row {
+                padding: 0.7rem 1rem;
+                font-size: 0.85rem;
+            }
+            .value {
+                font-size: 0.75rem; /* Slightly smaller for long keys on narrow screens */
+            }
+        }
+
+        @media print {
+            body {
+                background-color: #ffffff;
+                color: #000000;
+                padding: 0;
+            }
+            .theme-toggle {
+                display: none;
+            }
+            .section {
+                border-color: #d2d2d7;
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    {% macro render_status(type) %}
+        {% if status[type] == 'normal' %}
+            <svg class="status-icon normal" viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        {% elif status[type] in ['replaced', 'warning'] %}
+            <svg class="status-icon warning" viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        {% endif %}
+    {% endmacro %}
+    <div class="container">
+
+        <header>
+            <div class="header-title">
+                <h1>{{ r.device.commercial_name or 'iOS Device' }}</h1>
+            </div>
+            <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle Theme">
+                <!-- Sun icon (shown in dark mode) -->
+                <svg class="sun-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <!-- Moon icon (shown in light mode) -->
+                <svg class="moon-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
+        </header>
+
+
+
+        <!-- General Info Section -->
+        <div class="section">
+            <div class="section-header">{{ s.device }}</div>
+            <div class="row">
+                <span class="label">{{ s.device_name }}</span>
+                <span class="value">{{ r.device.device_name or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.device_color }}</span>
+                <span class="value">{{ r.device.device_color or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.sales_model }}</span>
+                <span class="value">{{ r.device.sales_model or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.model }}</span>
+                <span class="value">{{ r.device.regulatory_model or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.ios_version }}</span>
+                <span class="value">{{ r.device.product_version or s.na }} ({{ r.device.build_version or s.na }})</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.serial }}</span>
+                <span class="value">{{ r.device.serial_number or s.na }}{{ render_status('serial') }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.udid }}</span>
+                <span class="value">{{ r.device.udid or s.na }}{{ render_status('udid') }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.baseband }}</span>
+                <span class="value">{{ r.device.baseband_version or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.sim_status }}</span>
+                <span class="value">{{ s[r.device.sim_status] or r.device.sim_status or s.na }}{{ render_status('sim') }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.fmi_status }}</span>
+                <span class="value">
+                    {{ s[r.device.fmi_status] or r.device.fmi_status or s.na }}
+                    {% if r.device.apple_id %}
+                        <span class="muted-value">({{ r.device.apple_id }})</span>
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+
+
+
+        <!-- Battery Section -->
+        <div class="section">
+            <div class="section-header">{{ s.battery }}</div>
+            <div class="row">
+                <span class="label">{{ s.health }}</span>
+                <span class="value">
+                    {% if r.battery.health_percent is not none %}
+                        {{ r.battery.health_percent|int }}%
+                    {% else %}
+                        {{ s.na }}
+                    {% endif %}
+                    {{ render_status('battery') }}
+                </span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.cycle_count }}</span>
+                <span class="value">{{ r.battery.cycle_count or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.design_capacity }}</span>
+                <span class="value">{{ r.battery.design_capacity or s.na }}{% if r.battery.design_capacity %} mAh{% endif %}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.full_charge_capacity }}</span>
+                <span class="value">
+                    {{ r.battery.full_charge_capacity or s.na }}{% if r.battery.full_charge_capacity %} mAh{% endif %}
+                    {% if status.battery_fcc == 'warning' %}
+                        <span class="muted-value" style="color: var(--accent-orange);">({{ s.bms_modified }})</span>
+                    {% endif %}
+                </span>
+            </div>
+
+            <div class="row">
+                <span class="label">{{ s.battery_serial }}</span>
+                <span class="value">{{ r.battery.battery_serial or s.na }}{% if decoded.battery %}<span class="muted-value">({{ decoded.battery }})</span>{% endif %}</span>
+            </div>
+        </div>
+
+        <!-- Storage Section -->
+        <div class="section">
+            <div class="section-header">{{ s.storage }}</div>
+            <div class="row">
+                <span class="label">{{ s.used }}</span>
+                <span class="value">
+                    {% if storage.used %}
+                        {{ storage.used }} / {{ storage.total or s.na }} ({{ storage.used_percent or 0 }}%)
+                    {% else %}
+                        {{ s.na }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.available }}</span>
+                <span class="value">{{ storage.available or s.na }}</span>
+            </div>
+        </div>
+
+        <!-- Components Section -->
+        <div class="section">
+            <div class="section-header">{{ s.components }}</div>
+            <div class="row">
+                <span class="label">{{ s.mlb }}</span>
+                <span class="value">{{ r.components.mlb_serial or s.na }}{{ render_status('mlb') }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.wifi_board }}</span>
+                <span class="value">{{ r.components.wireless_board_serial or s.na }}{{ render_status('wifi') }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.ssd }}</span>
+                <span class="value">{{ r.components.ssd_serial or s.na }}{{ render_status('ssd') }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.display }}</span>
+                <span class="value">{{ r.components.display_serial or s.na }}{% if decoded.display %}<span class="muted-value">({{ decoded.display }})</span>{% endif %}{{ render_status('display') }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.touch_screen }}</span>
+                <span class="value">{{ r.components.touch_serial or s.na }}{{ render_status('touch') }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.biometric }}</span>
+                <span class="value">{{ r.components.biometric_serial or s.na }}{% if decoded.biometric %}<span class="muted-value">({{ decoded.biometric }})</span>{% endif %}{{ render_status('biometric') }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.als }}</span>
+                <span class="value">{{ r.components.als_serial or s.na }}{{ render_status('als') }}</span>
+            </div>
+        </div>
+
+
+        <!-- Identifiers Section -->
+        <div class="section">
+            <div class="section-header">{{ s.identifiers }}</div>
+            <div class="row">
+                <span class="label">{{ s.imei }}</span>
+                <span class="value">{{ r.identifiers.imei or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.imei2 }}</span>
+                <span class="value">{{ r.identifiers.imei2 or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.ecid }}</span>
+                <span class="value">{{ r.identifiers.ecid or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.wifi_mac }}</span>
+                <span class="value">{{ r.identifiers.wifi_mac or s.na }}</span>
+            </div>
+            <div class="row">
+                <span class="label">{{ s.bt_mac }}</span>
+                <span class="value">{{ r.identifiers.bt_mac or s.na }}</span>
+            </div>
+        </div>
+
+        <footer>
+        <img src="file:///Users/jenya/Projects/iScan/ChatGPT Image 10 авг. 2026 г., 16_29_16.png" alt="Apple Certified Associate">
+    </footer>
+
+    </div>
+
+    <script>
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        }
+
+        // Init theme
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            document.documentElement.classList.remove('dark');
+        } else {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+
+</body>
+</html>
