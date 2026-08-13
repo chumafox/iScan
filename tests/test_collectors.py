@@ -1,6 +1,4 @@
 from iscan.collectors import device_info, battery, storage
-from iscan.collectors import components as comp_collector
-import pytest
 
 def test_device_info(fake_lockdown):
     info = device_info.collect(fake_lockdown)
