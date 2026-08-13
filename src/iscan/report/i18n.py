@@ -94,6 +94,7 @@ STRINGS = {
         "error": "Error",
         "timeout": "Timed out",
         "unavailable": "Unavailable",
+        "inferred": "inferred from serial prefix",
     },
     "ru": {
         "title": "Отчёт об устройстве iOS",
@@ -176,6 +177,7 @@ STRINGS = {
         "error": "Ошибка",
         "timeout": "Истекло время ожидания",
         "unavailable": "Недоступно",
+        "inferred": "предположение по префиксу серийника",
     },
 }
 

@@ -4,33 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from iscan.catalog import commercial_name
 from iscan.collectors.common import call_maybe_async, decode_value, first_value
 from iscan.models import DeviceInfo
-
-# ProductType values are stable across iOS releases, unlike marketing strings.
-MODEL_NAMES = {
-    "iPhone13,1": "iPhone 12 mini",
-    "iPhone13,2": "iPhone 12",
-    "iPhone13,3": "iPhone 12 Pro",
-    "iPhone13,4": "iPhone 12 Pro Max",
-    "iPhone14,2": "iPhone 13 Pro",
-    "iPhone14,3": "iPhone 13 Pro Max",
-    "iPhone14,4": "iPhone 13 mini",
-    "iPhone14,5": "iPhone 13",
-    "iPhone14,6": "iPhone SE (3rd generation)",
-    "iPhone14,7": "iPhone 14",
-    "iPhone14,8": "iPhone 14 Plus",
-    "iPhone15,2": "iPhone 14 Pro",
-    "iPhone15,3": "iPhone 14 Pro Max",
-    "iPhone15,4": "iPhone 15",
-    "iPhone15,5": "iPhone 15 Plus",
-    "iPhone16,1": "iPhone 15 Pro",
-    "iPhone16,2": "iPhone 15 Pro Max",
-    "iPhone17,1": "iPhone 16 Pro",
-    "iPhone17,2": "iPhone 16 Pro Max",
-    "iPhone17,3": "iPhone 16",
-    "iPhone17,4": "iPhone 16 Plus",
-}
 
 COLOR_NAMES = {
     1: "Black",
@@ -100,7 +76,7 @@ def _populate_from_values(info: DeviceInfo, values: Mapping[str, Any]) -> None:
     info.udid = decode_value(v.get("UniqueDeviceID"))
     info.activation_state = decode_value(v.get("ActivationState"))
     info.baseband_version = decode_value(v.get("BasebandVersion"))
-    info.commercial_name = MODEL_NAMES.get(info.product_type or "", info.product_type)
+    info.commercial_name = commercial_name(info.product_type)
 
     color = v.get("DeviceColor")
     if color is not None:

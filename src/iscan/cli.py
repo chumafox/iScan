@@ -29,10 +29,12 @@ from iscan.errors import (
 from iscan.transport import (
     TransportAddressError,
     TransportConfig,
+    apply_environment,
     describe_transport,
     display_address,
     probe_transport,
     resolve_transport,
+    socket_privacy_warning,
 )
 
 app = typer.Typer(
@@ -84,11 +86,13 @@ def _transport_option_help() -> str:
 
 def _resolve_cli_transport(address: Optional[str]) -> TransportConfig:
     try:
-        return resolve_transport(address)
+        config = resolve_transport(address)
     except TransportAddressError as exc:
         raise TransportUnavailableError(
             f"Invalid usbmuxd address: {exc}", detail=str(exc)
         ) from exc
+    apply_environment(config)
+    return config
 
 
 def _safe_filename(value: Optional[str]) -> str:
@@ -176,6 +180,9 @@ def report(
     json_progress: bool = typer.Option(
         False, "--json-progress", help="Emit one machine-readable JSON event per line"
     ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Also write a .json sidecar next to the HTML report"
+    ),
 ):
     """Collect diagnostics and generate an HTML report."""
 
@@ -189,6 +196,7 @@ def report(
             timeout=timeout,
             pair_timeout=pair_timeout,
             json_progress=json_progress,
+            json_output=json_output,
         )
     )
 
@@ -203,6 +211,7 @@ async def _report_async(
     timeout: float = 8.0,
     pair_timeout: Optional[float] = None,
     json_progress: bool = False,
+    json_output: bool = False,
 ) -> Optional[Path]:
     from datetime import datetime, timezone
 
@@ -210,7 +219,6 @@ async def _report_async(
     from iscan.collectors import collect_all
     from iscan.report.i18n import detect_lang
     from iscan.report.render import render_html
-    from iscan.transport import apply_environment
 
     progress = Progress(json_progress)
     try:
@@ -220,7 +228,6 @@ async def _report_async(
         progress.error(exc.message, code=code, detail=exc.detail)
         raise typer.Exit(int(code))
 
-    apply_environment(config)
     progress.emit(
         {
             "event": "start",
@@ -277,13 +284,27 @@ async def _report_async(
     try:
         html = render_html(diagnostic, lang)
         _write_text_atomic(output, html)
+        if json_output:
+            sidecar = output.with_suffix(".json")
+            _write_text_atomic(
+                sidecar,
+                json.dumps(_report_payload(diagnostic), ensure_ascii=False, indent=2, default=_json_default)
+                + "\n",
+            )
     except Exception as exc:
         code = ExitCode.REPORT_FAILED
         progress.error("Could not write the HTML report.", code=code, detail=public_error_detail(exc))
         raise typer.Exit(int(code))
 
     absolute = output.resolve()
-    progress.emit({"event": "saved", "path": str(absolute), "partial": diagnostic.is_partial})
+    progress.emit(
+        {
+            "event": "saved",
+            "path": str(absolute),
+            "partial": diagnostic.is_partial,
+            **({"json": str(absolute.with_suffix(".json"))} if json_output else {}),
+        }
+    )
     if not json_progress:
         console.print(f"[bold green]✓[/] Report saved: [cyan]{absolute}[/]")
     if open_browser:
@@ -447,11 +468,20 @@ async def _doctor_async(
     checks: list[dict[str, Any]] = []
     probe = await probe_transport(config, timeout=timeout)
     checks.append({"name": "transport", "ok": probe.ok, **probe.as_dict()})
+    privacy = socket_privacy_warning(config)
+    if privacy:
+        checks.append({"name": "socket_privacy", "ok": False, "detail": privacy})
+    else:
+        checks.append(
+            {"name": "socket_privacy", "ok": True, "detail": "socket is not world-accessible"}
+        )
     devices: list[dict[str, str]] = []
     failure_code = ExitCode.OK
     if probe.ok:
         try:
-            devices = await dev.list_devices_async(transport=config, timeout=timeout)
+            devices = await dev.list_devices_async(
+                transport=config, timeout=timeout, details=False
+            )
             checks.append({"name": "device_list", "ok": bool(devices), "count": len(devices)})
             if not devices:
                 failure_code = ExitCode.DEVICE_NOT_FOUND

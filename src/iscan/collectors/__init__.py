@@ -175,11 +175,23 @@ async def collect_all(
 
     from iscan.models import Battery, Components, DeviceInfo, Storage
 
+    # pymobiledevice3 LockdownClient is not safe for concurrent start_service.
+    # Over NetworkUSB a raced AFC + diagnostics request can interleave on the
+    # same mux session and look like a dead tunnel.  Timeouts stay per-collector.
+    lockdown_lock = asyncio.Lock()
+
+    def _exclusive(factory: Callable[[], Awaitable[Any]]) -> Callable[[], Awaitable[Any]]:
+        async def _wrapped() -> Any:
+            async with lockdown_lock:
+                return await factory()
+
+        return _wrapped
+
     jobs = (
-        ("device_info", lambda: device_info.collect_async(lockdown), DeviceInfo),
-        ("battery", lambda: battery.collect_async(lockdown), Battery),
-        ("storage", lambda: storage.collect_async(lockdown), Storage),
-        ("components", lambda: components._collect_async(lockdown), Components),
+        ("device_info", _exclusive(lambda: device_info.collect_async(lockdown)), DeviceInfo),
+        ("battery", _exclusive(lambda: battery.collect_async(lockdown)), Battery),
+        ("storage", _exclusive(lambda: storage.collect_async(lockdown)), Storage),
+        ("components", _exclusive(lambda: components._collect_async(lockdown)), Components),
     )
 
     tasks = [

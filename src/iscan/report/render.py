@@ -7,6 +7,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from iscan.catalog import FACTORY_MAX_STORAGE_GIB
 from iscan.models import DiagnosticReport
 from iscan.report.i18n import get_strings
 
@@ -95,7 +96,7 @@ def _get_component_statuses(report: DiagnosticReport) -> dict[str, str]:
     # A capacity above the documented factory maximum is an anomaly worth
     # flagging, not proof that a board was replaced.  Keep the conservative
     # check that existed in 0.1 for the most common expansion case.
-    factory_max_gib = {"iPhone13,1": 256}.get(report.device.product_type or "")
+    factory_max_gib = FACTORY_MAX_STORAGE_GIB.get(report.device.product_type or "")
     if factory_max_gib and report.storage.total_capacity:
         if report.storage.total_capacity > factory_max_gib * 1.08 * 1024**3:
             statuses["ssd"] = "replaced"

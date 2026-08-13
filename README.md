@@ -13,6 +13,11 @@
 - Collectors run independently with per-service timeouts. A missing battery or IORegistry service no longer destroys the whole report.
 - Reports record transport provenance and collection status, escape device-controlled values, contain no machine-local image paths and are written atomically.
 - `list` no longer assumes every device must be labelled `USB`; this matters for remote and Wi-Fi mux connections.
+- Every command exports the resolved socket to `USBMUXD_SOCKET_ADDRESS` / `PYMOBILEDEVICE3_USBMUX`, so older pymobiledevice3 still works.
+- Collectors serialize lockdown I/O (pymobiledevice3 is not re-entrant) while keeping per-service timeouts.
+- `iscan report --json` writes a sidecar next to the HTML file.
+- `iscan doctor` warns when a NetworkUSB UNIX socket is world-accessible.
+- Commercial names cover iPhone 8 through iPhone 17 / Air / 17e.
 
 ## Installation
 
@@ -75,7 +80,7 @@ For compatibility, iScan also accepts `unix:/path`, `unix:///path`, `tcp:host:po
 If NetworkUSB writes `~/.cache/networkusb/active.json`, iScan may discover it when no address option or environment variable is set. The file is only a hint: stale entries and non-socket paths are ignored, and it must never contain a token.
 
 ```bash
-iscan report --usbmux-address /tmp/usbmuxd.sock --json-progress
+iscan report --usbmux-address /tmp/usbmuxd.sock --json-progress --json
 ```
 
 The machine-readable output is one JSON object per line and is safe for a supervisor to consume without parsing human text:

@@ -81,6 +81,28 @@ def test_active_metadata_ignores_stale_socket(tmp_path):
     assert config.source == "system"
 
 
+def test_socket_privacy_warning_for_world_accessible_unix_socket():
+    from iscan.transport import TransportConfig, socket_privacy_warning
+
+    sock_dir = tempfile.mkdtemp(dir="/tmp", prefix="ipriv_")
+    path = os.path.join(sock_dir, "open.sock")
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(path)
+    try:
+        os.chmod(path, 0o777)
+        warning = socket_privacy_warning(TransportConfig(address=path, kind="unix", source="cli"))
+        assert warning is not None
+        assert "0777" in warning or "0o777" in warning
+        os.chmod(path, 0o700)
+        assert socket_privacy_warning(TransportConfig(address=path, kind="unix", source="cli")) is None
+        assert socket_privacy_warning(TransportConfig(kind="system")) is None
+    finally:
+        server.close()
+        import shutil
+
+        shutil.rmtree(sock_dir, ignore_errors=True)
+
+
 def test_probe_unix_endpoint(tmp_path):
     from iscan.transport import TransportConfig, probe_transport
 

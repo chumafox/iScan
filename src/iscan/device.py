@@ -148,12 +148,16 @@ async def list_devices_async(
     transport: Optional[TransportConfig] = None,
     usbmux_address: Optional[str] = None,
     timeout: float = 5.0,
+    details: bool = True,
 ) -> list[dict[str, str]]:
     """List every device visible through the endpoint, including remote ones.
 
     The old implementation filtered for ``USB``.  That is not a safe
     assumption after NetworkUSB or Wi-Fi pairing: the mux may report a
     different connection type even though it is the correct endpoint.
+
+    ``details=False`` skips the extra lockdown round-trip per device.  That
+    is what ``iscan doctor`` needs: visibility, not a full info dump.
     """
 
     config = transport or resolve_transport(usbmux_address)
@@ -176,27 +180,28 @@ async def list_devices_async(
             "ios": "",
             "connection_type": str(getattr(device, "connection_type", "") or "Unknown"),
         }
-        try:
-            lockdown = await connect_async(
-                serial,
-                transport=config,
-                timeout=min(timeout, 5.0),
-                autopair=False,
-            )
+        if details:
             try:
-                values = getattr(lockdown, "all_values", {})
-                if isinstance(values, dict):
-                    item["model"] = str(values.get("ProductType") or "Unknown")
-                    item["name"] = str(values.get("DeviceName") or "")
-                    item["ios"] = str(values.get("ProductVersion") or "")
-            finally:
-                await close_async(lockdown)
-        except DeviceConnectionError:
-            # Listing should remain useful when a single device is locked or
-            # unpaired; the UDID and mux connection type are still valid.
-            pass
-        except Exception:
-            pass
+                lockdown = await connect_async(
+                    serial,
+                    transport=config,
+                    timeout=min(timeout, 5.0),
+                    autopair=False,
+                )
+                try:
+                    values = getattr(lockdown, "all_values", {})
+                    if isinstance(values, dict):
+                        item["model"] = str(values.get("ProductType") or "Unknown")
+                        item["name"] = str(values.get("DeviceName") or "")
+                        item["ios"] = str(values.get("ProductVersion") or "")
+                finally:
+                    await close_async(lockdown)
+            except DeviceConnectionError:
+                # Listing should remain useful when a single device is locked or
+                # unpaired; the UDID and mux connection type are still valid.
+                pass
+            except Exception:
+                pass
         result.append(item)
     return result
 
