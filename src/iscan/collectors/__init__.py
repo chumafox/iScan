@@ -182,11 +182,17 @@ async def collect_all(
         ("components", lambda: components._collect_async(lockdown), Components),
     )
 
+    lockdown_lock = asyncio.Lock()
+
+    async def _locked_factory(factory_fn):
+        async with lockdown_lock:
+            return await factory_fn()
+
     tasks = [
         asyncio.create_task(
             _run_collector(
                 name,
-                factory,
+                lambda fn=factory: _locked_factory(fn),
                 empty_factory,
                 report,
                 timeout=timeout,

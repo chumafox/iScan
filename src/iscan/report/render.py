@@ -28,13 +28,13 @@ def _decode_display_vendor(serial: str | None) -> str:
         return ""
     prefix = serial[:3].upper()
     if prefix in {"G9Q", "G9N", "G9P", "G3H", "GH"}:
-        return "Samsung"
+        return "Samsung (inferred)"
     if prefix in {"F7C", "DKH", "H3", "H4"}:
-        return "LG Display"
+        return "LG Display (inferred)"
     if prefix in {"C11", "FVQ", "C3F"}:
-        return "Sharp"
+        return "Sharp (inferred)"
     if prefix in {"DSH", "DOP", "BOE", "F8C"}:
-        return "BOE"
+        return "BOE (inferred)"
     return ""
 
 
@@ -43,11 +43,11 @@ def _decode_battery_vendor(serial: str | None) -> str:
         return ""
     prefix = serial[:3].upper()
     if prefix in {"F5D", "F6D", "DY9", "F2D"}:
-        return "Desay"
+        return "Desay (inferred)"
     if prefix in {"F7D", "F8Y", "F9G", "C8A", "C8W"}:
-        return "Sunwoda"
+        return "Sunwoda (inferred)"
     if prefix in {"D85", "D8D", "D8T"}:
-        return "ATL"
+        return "ATL (inferred)"
     return ""
 
 
@@ -56,9 +56,9 @@ def _decode_biometric_vendor(serial: str | None) -> str:
         return ""
     prefix = serial[:3].upper()
     if prefix in {"FWP", "F0X", "F7C"}:
-        return "LG Innotek"
+        return "LG Innotek (inferred)"
     if prefix.startswith("ME") or prefix == "PER":
-        return "STMicroelectronics"
+        return "STMicroelectronics (inferred)"
     return ""
 
 
