@@ -1,65 +1,131 @@
+"""Battery diagnostics with compatibility fallbacks across iOS releases."""
+
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+from iscan.collectors.common import as_bool, as_float, as_int, call_maybe_async, decode_value, first_value
 from iscan.models import Battery
 
 
-async def collect_async(lockdown) -> Battery:
-    bat = Battery()
+def _capacity(value: Any) -> int | None:
+    parsed = as_int(value)
+    return parsed if parsed is not None and parsed > 0 else None
 
-    # Primary: DiagnosticsService.get_battery() — works on iOS 17.4+/27 without tunnel
+
+def _populate(battery: Battery, values: Mapping[str, Any]) -> Battery:
+    v = dict(values)
+    nested = v.get("BatteryData")
+    battery_data = nested if isinstance(nested, Mapping) else {}
+
+    battery.cycle_count = as_int(first_value(v, ("CycleCount", "CycleCountTotal")))
+    battery.is_charging = as_bool(
+        first_value(v, ("IsCharging", "BatteryIsCharging", "Charging"))
+    )
+    serial = first_value(v, ("Serial", "BatterySerialNumber", "BatterySerial"))
+    battery.battery_serial = decode_value(serial)
+
+    battery.design_capacity = _capacity(
+        first_value(
+            v,
+            ("DesignCapacity", "NominalChargeCapacity", "AppleRawDesignCapacity"),
+        )
+        or first_value(
+            dict(battery_data),
+            ("DesignCapacity", "NominalChargeCapacity", "AppleRawDesignCapacity"),
+        )
+    )
+    battery.full_charge_capacity = _capacity(
+        first_value(
+            v,
+            (
+                "FullChargeCapacity",
+                "AppleRawMaxCapacity",
+                "RawMaxCapacity",
+                "MaxCapacityRaw",
+            ),
+        )
+        or first_value(
+            dict(battery_data),
+            (
+                "FullChargeCapacity",
+                "AppleRawMaxCapacity",
+                "RawMaxCapacity",
+                "MaxCapacityRaw",
+            ),
+        )
+    )
+
+    health = as_float(first_value(v, ("MaxCapacity", "BatteryHealth")))
+    # A few devices expose MaxCapacity as a fraction rather than a percent.
+    if health is not None and 0 < health <= 1:
+        health *= 100
+    if health is not None and 0 <= health <= 100:
+        battery.health_percent = round(health, 1)
+    elif (
+        battery.design_capacity
+        and battery.full_charge_capacity
+        and battery.design_capacity > 0
+    ):
+        # Do not calculate a nonsensical value when one iOS version reports raw
+        # gas-gauge units with a different scale.
+        ratio = battery.full_charge_capacity / battery.design_capacity
+        if 0 < ratio <= 1.5:
+            battery.health_percent = round(min(ratio * 100, 100), 1)
+
+    # If the raw maximum capacity is already in gauge units, retain it only
+    # when it is close enough to the design scale to be useful.  Otherwise the
+    # percentage remains valid while the ambiguous mAh field is omitted.
+    if (
+        battery.design_capacity
+        and battery.full_charge_capacity
+        and battery.full_charge_capacity > battery.design_capacity * 2
+    ):
+        battery.full_charge_capacity = None
+    return battery
+
+
+def _from_mapping(values: Any) -> Battery:
+    battery = Battery()
+    if isinstance(values, Mapping):
+        _populate(battery, values)
+    return battery
+
+
+async def collect_async(lockdown) -> Battery:
+    battery = Battery()
+
+    # Primary source: DiagnosticsService / IOPMPowerSource.  It is available
+    # on modern iOS and works through NetworkUSB without a separate DVT tunnel.
     try:
         from pymobiledevice3.services.diagnostics import DiagnosticsService
-        diag = DiagnosticsService(lockdown)
-        data = await diag.get_battery()
 
-        bat.cycle_count = data.get('CycleCount')
-        bat.is_charging = data.get('IsCharging')
-        bat.battery_serial = data.get('Serial')
-
-        # MaxCapacity = Battery Health % (same as iOS Settings → Battery → Battery Health)
-        max_cap = data.get('MaxCapacity')
-        if max_cap is not None:
-            bat.health_percent = float(max_cap)
-
-        # Capacity data from BatteryData sub-dict
-        battery_data = data.get('BatteryData', {})
-        if isinstance(battery_data, dict):
-            bat.design_capacity = battery_data.get('DesignCapacity')
-            fcc = battery_data.get('FullChargeCapacity')
-            # FCC is in raw gas gauge units — only store if design_capacity matches scale
-            if bat.design_capacity and fcc and fcc <= bat.design_capacity * 2:
-                bat.full_charge_capacity = fcc
-
-        return bat
+        data = await call_maybe_async(DiagnosticsService(lockdown).get_battery)
+        if isinstance(data, Mapping):
+            _populate(battery, data)
     except Exception:
         pass
 
-    # Fallback: lockdown domain (works on iOS ≤17.3)
-    try:
-        v = await lockdown.get_value(domain='com.apple.mobile.battery') or {}
-        bat.cycle_count = v.get('CycleCount')
-        bat.design_capacity = v.get('DesignCapacity')
-        bat.full_charge_capacity = v.get('FullChargeCapacity')
-        bat.battery_serial = v.get('BatterySerialNumber') or v.get('BatterySerial')
-        bat.is_charging = v.get('IsCharging') or v.get('BatteryIsCharging')
-        if bat.design_capacity and bat.full_charge_capacity and bat.design_capacity > 0:
-            bat.health_percent = round(bat.full_charge_capacity / bat.design_capacity * 100, 1)
-    except Exception:
-        pass
+    # Fallback: the lockdown battery domain used by older iOS releases.
+    if battery.health_percent is None or battery.cycle_count is None:
+        try:
+            values = await call_maybe_async(
+                lockdown.get_value, domain="com.apple.mobile.battery"
+            )
+            fallback = _from_mapping(values)
+            for name, value in vars(fallback).items():
+                if getattr(battery, name) is None and value is not None:
+                    setattr(battery, name, value)
+        except Exception:
+            pass
 
-    return bat
+    return battery
 
 
 def collect(lockdown) -> Battery:
-    """Sync fallback for tests using fixture."""
-    bat = Battery()
+    """Synchronous fallback for scripts and tests."""
+
     try:
-        v = lockdown.get_value(domain='com.apple.mobile.battery') or {}
-        bat.cycle_count = v.get('CycleCount')
-        bat.design_capacity = v.get('DesignCapacity')
-        bat.full_charge_capacity = v.get('FullChargeCapacity')
-        bat.battery_serial = v.get('BatterySerialNumber') or v.get('BatterySerial')
-        bat.is_charging = v.get('IsCharging') or v.get('BatteryIsCharging')
-        if bat.design_capacity and bat.full_charge_capacity and bat.design_capacity > 0:
-            bat.health_percent = round(bat.full_charge_capacity / bat.design_capacity * 100, 1)
+        return _from_mapping(lockdown.get_value(domain="com.apple.mobile.battery"))
     except Exception:
-        pass
-    return bat
+        return Battery()

@@ -1,38 +1,37 @@
-import asyncio
+"""Collect general lockdown/device information."""
+
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+from iscan.collectors.common import call_maybe_async, decode_value, first_value
 from iscan.models import DeviceInfo
 
-# Mapping of ProductType to commercial names
+# ProductType values are stable across iOS releases, unlike marketing strings.
 MODEL_NAMES = {
-    # iPhone 12 series
     "iPhone13,1": "iPhone 12 mini",
     "iPhone13,2": "iPhone 12",
     "iPhone13,3": "iPhone 12 Pro",
     "iPhone13,4": "iPhone 12 Pro Max",
-    # iPhone 13 series
     "iPhone14,2": "iPhone 13 Pro",
     "iPhone14,3": "iPhone 13 Pro Max",
     "iPhone14,4": "iPhone 13 mini",
     "iPhone14,5": "iPhone 13",
-    # iPhone SE 3rd Gen
     "iPhone14,6": "iPhone SE (3rd generation)",
-    # iPhone 14 series
     "iPhone14,7": "iPhone 14",
     "iPhone14,8": "iPhone 14 Plus",
     "iPhone15,2": "iPhone 14 Pro",
     "iPhone15,3": "iPhone 14 Pro Max",
-    # iPhone 15 series
     "iPhone15,4": "iPhone 15",
     "iPhone15,5": "iPhone 15 Plus",
     "iPhone16,1": "iPhone 15 Pro",
     "iPhone16,2": "iPhone 15 Pro Max",
-    # iPhone 16 series
     "iPhone17,1": "iPhone 16 Pro",
     "iPhone17,2": "iPhone 16 Pro Max",
     "iPhone17,3": "iPhone 16",
     "iPhone17,4": "iPhone 16 Plus",
 }
 
-# Simplified mapping for DeviceColor code to name
 COLOR_NAMES = {
     1: "Black",
     2: "White",
@@ -57,133 +56,144 @@ COLOR_NAMES = {
 }
 
 
-def _decode_bytes(val) -> str:
-    if isinstance(val, bytes):
+def _as_mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _decode_bytes(value: Any) -> str:
+    """Backward-compatible helper retained for integrations importing it."""
+
+    return decode_value(value) or ""
+
+
+def _sim_status(values: Mapping[str, Any], activation: str | None) -> str | None:
+    # kCTPostponementStatus is the closest carrier-lock signal exposed by
+    # lockdown.  SIMStatus itself means that a SIM is present, not that the
+    # phone is carrier-unlocked, so it is only used as a conservative fallback.
+    postponement = decode_value(values.get("kCTPostponementStatus"))
+    if postponement == "kCTPostponementStatusActivated" and activation == "Activated":
+        return "no_restrictions"
+    if postponement == "kCTPostponementStatusDelay":
+        return "locked"
+
+    lock_value = first_value(
+        dict(values),
+        ("SIMLockStatus", "CarrierLockStatus", "SIMLock", "CarrierLock"),
+    )
+    lock_text = (decode_value(lock_value) or "").lower()
+    if any(token in lock_text for token in ("unlocked", "no_restrictions", "no restrictions")):
+        return "no_restrictions"
+    if "lock" in lock_text:
+        return "locked"
+    if activation != "Activated":
+        return "unknown"
+    return "unknown"
+
+
+def _populate_from_values(info: DeviceInfo, values: Mapping[str, Any]) -> None:
+    v = dict(values)
+    info.product_type = decode_value(v.get("ProductType"))
+    info.product_version = decode_value(v.get("ProductVersion"))
+    info.build_version = decode_value(v.get("BuildVersion"))
+    info.device_name = decode_value(v.get("DeviceName"))
+    info.serial_number = decode_value(v.get("SerialNumber"))
+    info.udid = decode_value(v.get("UniqueDeviceID"))
+    info.activation_state = decode_value(v.get("ActivationState"))
+    info.baseband_version = decode_value(v.get("BasebandVersion"))
+    info.commercial_name = MODEL_NAMES.get(info.product_type or "", info.product_type)
+
+    color = v.get("DeviceColor")
+    if color is not None:
         try:
-            return val.decode('utf-8').strip('\x00').strip()
-        except UnicodeDecodeError:
-            return "".join(chr(c) if 32 <= c <= 126 else "" for c in val).strip()
-    return str(val).strip()
+            info.device_color = COLOR_NAMES.get(int(color), decode_value(color))
+        except (TypeError, ValueError):
+            info.device_color = decode_value(color)
+
+    model_num = decode_value(v.get("ModelNumber"))
+    region_info = decode_value(v.get("RegionInfo"))
+    if model_num and region_info and not model_num.endswith(region_info):
+        info.sales_model = f"{model_num}{region_info}"
+    else:
+        info.sales_model = model_num
+
+    info.sim_status = _sim_status(v, info.activation_state)
+
+    # Some iOS versions expose FMI in lockdown rather than IORegistry.
+    fmi = first_value(
+        v,
+        ("FMiPAccount", "FindMyiPhone", "FindMyDevice", "ActivationLock"),
+    )
+    if fmi is not None:
+        text = (decode_value(fmi) or "").lower()
+        if text in {"yes", "true", "1", "enabled", "locked"}:
+            info.fmi_status = "enabled"
+        elif text in {"no", "false", "0", "disabled", "unlocked"}:
+            info.fmi_status = "disabled"
+
+
+def _apply_options(info: DeviceInfo, options: Mapping[str, Any]) -> None:
+    fmi = first_value(dict(options), ("fm-activation-locked", "activation-locked"))
+    if fmi is not None:
+        text = (decode_value(fmi) or "").lower()
+        info.fmi_status = "enabled" if text in {"yes", "true", "1"} else "disabled"
+    apple_id = first_value(dict(options), ("fm-account-masked", "fm-account"))
+    if apple_id is not None:
+        info.apple_id = decode_value(apple_id)
 
 
 async def collect_async(lockdown) -> DeviceInfo:
     info = DeviceInfo()
     try:
-        v = lockdown.all_values
-        info.product_type = v.get('ProductType')
-        info.product_version = v.get('ProductVersion')
-        info.build_version = v.get('BuildVersion')
-        info.device_name = v.get('DeviceName')
-        info.serial_number = v.get('SerialNumber')
-        info.udid = v.get('UniqueDeviceID')
-        info.activation_state = v.get('ActivationState')
-        info.baseband_version = v.get('BasebandVersion')
-
-        # Model Name
-        prod_type = info.product_type
-        if prod_type:
-            info.commercial_name = MODEL_NAMES.get(prod_type, prod_type)
-
-        # Device Color
-        color_code = v.get('DeviceColor')
-        if color_code is not None:
-            try:
-                info.device_color = COLOR_NAMES.get(int(color_code), f"Color Code {color_code}")
-            except (ValueError, TypeError):
-                info.device_color = str(color_code)
-
-        # Model Number (Sales Model): e.g. 3H480TA/A
-        model_num = v.get('ModelNumber')
-        region_info = v.get('RegionInfo')
-        if model_num and region_info:
-            info.sales_model = f"{_decode_bytes(model_num)}{_decode_bytes(region_info)}"
-        elif model_num:
-            info.sales_model = _decode_bytes(model_num)
-
-        # Carrier Lock / SIM Status
-        activation = v.get('ActivationState')
-        postponement = v.get('kCTPostponementStatus')
-        if postponement:
-            postponement_str = _decode_bytes(postponement)
-            if postponement_str == 'kCTPostponementStatusActivated' and activation == 'Activated':
-                info.sim_status = 'no_restrictions'
-            elif postponement_str == 'kCTPostponementStatusDelay':
-                info.sim_status = 'locked'
-            else:
-                info.sim_status = 'unknown'
-        else:
-            if activation == 'Activated':
-                info.sim_status = 'no_restrictions'
-            else:
-                info.sim_status = 'unknown'
+        _populate_from_values(info, _as_mapping(lockdown.all_values))
     except Exception:
+        # A lockdown object can expose all_values lazily; the optional registry
+        # queries below may still provide useful data.
         pass
 
-    # Find My iPhone & Apple ID (query from options node)
     try:
         from pymobiledevice3.services.diagnostics import DiagnosticsService
+
         diag = DiagnosticsService(lockdown)
-        opts = await diag.ioregistry(name="options")
-        if opts and isinstance(opts, dict):
-            fmi = opts.get('fm-activation-locked')
-            if fmi:
-                fmi_str = _decode_bytes(fmi)
-                if fmi_str.upper() == 'YES':
-                    info.fmi_status = 'enabled'
-                else:
-                    info.fmi_status = 'disabled'
-            
-            apple_id = opts.get('fm-account-masked')
-            if apple_id:
-                info.apple_id = _decode_bytes(apple_id)
+        options = await call_maybe_async(diag.ioregistry, name="options")
+        if isinstance(options, Mapping):
+            _apply_options(info, options)
     except Exception:
         pass
 
-    # Regulatory Model: e.g. A2399 (query from IORegistry device-tree)
     try:
         from pymobiledevice3.services.diagnostics import DiagnosticsService
+
         diag = DiagnosticsService(lockdown)
-        dt = await diag.ioregistry(name="device-tree")
-        if dt and isinstance(dt, dict):
-            reg_model = dt.get('regulatory-model-number')
-            if reg_model:
-                info.regulatory_model = _decode_bytes(reg_model)
+        device_tree = await call_maybe_async(diag.ioregistry, name="device-tree")
+        if isinstance(device_tree, Mapping):
+            regulatory = first_value(
+                dict(device_tree),
+                ("regulatory-model-number", "RegulatoryModelNumber"),
+            )
+            if regulatory is not None:
+                info.regulatory_model = decode_value(regulatory)
     except Exception:
         pass
 
+    # A few releases put the regulatory number in lockdown, so prefer that
+    # value when the IORegistry query was unavailable.
+    if info.regulatory_model is None:
+        try:
+            values = _as_mapping(lockdown.all_values)
+            info.regulatory_model = decode_value(
+                first_value(values, ("RegulatoryModelNumber", "RegulatoryModel"))
+            )
+        except Exception:
+            pass
     return info
 
 
 def collect(lockdown) -> DeviceInfo:
-    """Sync fallback for tests using fixture."""
+    """Synchronous collector used by lightweight scripts and fixture tests."""
+
     info = DeviceInfo()
     try:
-        v = lockdown.all_values
-        info.product_type = v.get('ProductType')
-        info.product_version = v.get('ProductVersion')
-        info.build_version = v.get('BuildVersion')
-        info.device_name = v.get('DeviceName')
-        info.serial_number = v.get('SerialNumber')
-        info.udid = v.get('UniqueDeviceID')
-        info.activation_state = v.get('ActivationState')
-        info.baseband_version = v.get('BasebandVersion')
-        
-        info.commercial_name = MODEL_NAMES.get(info.product_type, info.product_type)
-        info.device_color = "Black"
-        info.fmi_status = "disabled"
-        
-        model_num = v.get('ModelNumber')
-        region_info = v.get('RegionInfo')
-        if model_num and region_info:
-            info.sales_model = f"{model_num}{region_info}"
-        elif model_num:
-            info.sales_model = model_num
-            
-        postponement = v.get('kCTPostponementStatus')
-        if postponement == 'kCTPostponementStatusActivated' and info.activation_state == 'Activated':
-            info.sim_status = 'no_restrictions'
-        else:
-            info.sim_status = 'unknown'
+        _populate_from_values(info, _as_mapping(lockdown.all_values))
     except Exception:
         pass
     return info

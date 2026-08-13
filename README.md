@@ -1,23 +1,22 @@
 # iScan
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)
 
-**iScan** is an iOS device diagnostics CLI that generates detailed and beautiful HTML reports. It acts as an open-source, CLI-based alternative to tools like 3uTools for macOS and Linux.
+**iScan** is a cross-platform iOS diagnostics CLI that generates a self-contained HTML report. It is designed to work with a local `usbmuxd` socket and with [NetworkUSB](https://github.com/chumafox/NetworkUSB), which exposes an iPhone attached to another Mac as a local socket.
 
-## Features
+## What changed in 0.2
 
-- Scans connected iOS devices over USB.
-- Generates detailed HTML diagnostic reports (with dark mode and print support).
-- Extracts device info, storage usage, battery health and cycle count.
-- Checks components (serial numbers for MLB, cameras, display, biometric).
-- Supports English and Russian reports.
-
-> **Note for iOS 17+**: You must run the tunnel first in a separate terminal:
-> `sudo pymobiledevice3 remote start-tunnel`
+- NetworkUSB is a first-class transport: explicit socket selection, environment compatibility and optional active-endpoint discovery.
+- `iscan doctor` checks the socket, device visibility and lockdown/pairing instead of failing deep inside a report.
+- `iscan pair --wait` makes the remote “Trust This Computer?” step explicit.
+- `report --json-progress` emits a stable JSON-lines contract for NetworkUSB's menu-bar client.
+- Collectors run independently with per-service timeouts. A missing battery or IORegistry service no longer destroys the whole report.
+- Reports record transport provenance and collection status, escape device-controlled values, contain no machine-local image paths and are written atomically.
+- `list` no longer assumes every device must be labelled `USB`; this matters for remote and Wi-Fi mux connections.
 
 ## Installation
 
-Using `uv tool` (recommended):
+Using `uv` (recommended):
 
 ```bash
 uv tool install ./
@@ -31,32 +30,96 @@ pipx install ./
 
 ## Usage
 
-Generate an HTML report and open it in your browser:
+Generate and open an HTML report:
+
 ```bash
 iscan report --open
 ```
 
-Show key info in the terminal:
+Show key information in the terminal:
+
 ```bash
 iscan info
-```
-
-List all connected devices:
-```bash
 iscan list
+iscan --version
 ```
 
-Show version:
+Check the complete transport path before running a report:
+
 ```bash
-iscan version
+iscan doctor
+iscan doctor --json
 ```
 
-## Related projects
+Complete pairing/Trust on the Mac that runs iScan. The iPhone user will see the Trust prompt at the physical device:
 
-**iScan** is built to work in pair with **[NetworkUSB](https://github.com/chumafox/NetworkUSB)** — an async usbmuxd network tunnel. NetworkUSB exposes a remotely-connected iPhone to this machine as a local device, so you can run `iscan report` against an iPhone that is physically attached to another Mac (e.g. a client's machine in a store) as if it were plugged into your own:
-
-```
-iPhone ── USB ── [client Mac: usbmuxd-agent] ──TCP/TLS── [your Mac: usbmuxd-bridge] ── /tmp/usbmuxd.sock ── iScan
+```bash
+iscan pair --wait 120
 ```
 
-See also: [chumafox/NetworkUSB — async usbmuxd tunnel](https://github.com/chumafox/NetworkUSB)
+## NetworkUSB integration
+
+Start `usbmuxd-bridge` on the Mac running iScan and point iScan at the socket it creates:
+
+```bash
+usbmuxd-bridge --agent-host 100.x.y.z --socket-path "$HOME/Library/Application Support/networkusb/usbmuxd.sock"
+
+# Canonical pymobiledevice3 form: a bare UNIX path, not unix:/path.
+export USBMUXD_SOCKET_ADDRESS="$HOME/Library/Application Support/networkusb/usbmuxd.sock"
+iscan doctor
+iscan report --open
+```
+
+For compatibility, iScan also accepts `unix:/path`, `unix:///path`, `tcp:host:port` and `host:port` through `--usbmux-address`/`--socket-path`. The normalized bare path is passed to `pymobiledevice3`; both `USBMUXD_SOCKET_ADDRESS` and `PYMOBILEDEVICE3_USBMUX` are exported for subprocesses. CLI options take precedence over environment variables.
+
+If NetworkUSB writes `~/.cache/networkusb/active.json`, iScan may discover it when no address option or environment variable is set. The file is only a hint: stale entries and non-socket paths are ignored, and it must never contain a token.
+
+```bash
+iscan report --usbmux-address /tmp/usbmuxd.sock --json-progress
+```
+
+The machine-readable output is one JSON object per line and is safe for a supervisor to consume without parsing human text:
+
+```json
+{"event":"start","command":"report","transport":{"kind":"unix"}}
+{"event":"connected","name":"iPhone"}
+{"event":"service","name":"battery","state":"complete","ok":true}
+{"event":"saved","path":"/absolute/path/iscan_report.html","partial":false}
+```
+
+`report --json-progress` keeps JSON on stdout and avoids Rich/progress text. Human-readable output continues to include the stable line `Report saved: <absolute path>` for older NetworkUSB menu-bar builds.
+
+### Pairing model
+
+NetworkUSB is a transparent usbmuxd tunnel. Pair records and the HostID belong to the Mac running iScan, not to the Mac physically holding the iPhone. Therefore:
+
+1. Start the NetworkUSB agent and bridge.
+2. Run `iscan doctor` on the master.
+3. At the first `iscan pair --wait`, ask the store operator to tap **Trust** on the iPhone.
+4. Run reports from the master thereafter.
+
+Do not copy pair records from the agent: that is a different host identity.
+
+### Exit codes
+
+| Code | Meaning |
+|---:|---|
+| 0 | Report was written successfully |
+| 2 | No device was visible |
+| 3 | Device is not paired / Trust was not completed |
+| 4 | usbmuxd or NetworkUSB transport is unavailable |
+| 5 | Report collection or writing failed |
+
+## Data and privacy
+
+Reports contain identifiers such as UDID, serial number and IMEI because they are diagnostic data. Keep generated HTML files private. iScan does not put tokens in reports or progress events, and it never claims that a component is original merely because a serial number was readable.
+
+## Related project
+
+**[NetworkUSB](https://github.com/chumafox/NetworkUSB)** is the async TCP/TLS usbmuxd tunnel used for remote devices:
+
+```text
+iPhone ── USB ── [shop Mac: usbmuxd-agent] ── TCP/TLS ── [master Mac: usbmuxd-bridge] ── UNIX ── iScan
+```
+
+The cross-project audit and the remaining NetworkUSB-side hardening items are documented in [`AUDIT.md`](AUDIT.md). iScan implements the transport, timeout and CLI portions of that contract; NetworkUSB must keep its local socket private/stable and pass the same canonical path to its supervisor.
