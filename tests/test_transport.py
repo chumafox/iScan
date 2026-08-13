@@ -37,10 +37,13 @@ def test_transport_precedence_and_legacy_env():
     assert config.source == "env:PYMOBILEDEVICE3_USBMUX"
 
 
+import tempfile
+
 def test_active_networkusb_metadata_is_used_only_for_a_live_socket(tmp_path, monkeypatch):
-    socket_path = tmp_path / "bridge.sock"
+    sock_dir = tempfile.mkdtemp(dir="/tmp", prefix="isock_")
+    socket_path = os.path.join(sock_dir, "bridge.sock")
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    server.bind(str(socket_path))
+    server.bind(socket_path)
     try:
         active = tmp_path / "active.json"
         active.write_text(
@@ -58,12 +61,14 @@ def test_active_networkusb_metadata_is_used_only_for_a_live_socket(tmp_path, mon
         )
         config = resolve_transport(environ={}, active_file=active)
         assert config.source == "networkusb-active"
-        assert config.address == str(socket_path)
+        assert config.address == socket_path
         assert config.networkusb_agent == "100.64.0.7:8721"
         assert config.networkusb_fingerprint == "AA:BB"
         assert config.networkusb_version == "0.2.0"
     finally:
         server.close()
+        import shutil
+        shutil.rmtree(sock_dir, ignore_errors=True)
 
 
 def test_active_metadata_ignores_stale_socket(tmp_path):
@@ -80,21 +85,25 @@ def test_probe_unix_endpoint(tmp_path):
     from iscan.transport import TransportConfig, probe_transport
 
     async def scenario():
-        path = tmp_path / "probe.sock"
+        sock_dir = tempfile.mkdtemp(dir="/tmp", prefix="iprobe_")
+        path = os.path.join(sock_dir, "probe.sock")
 
         async def handle(reader, writer):
             writer.close()
             await writer.wait_closed()
 
-        server = await asyncio.start_unix_server(handle, path=str(path))
+        server = await asyncio.start_unix_server(handle, path=path)
         try:
             result = await probe_transport(
-                TransportConfig(address=str(path), source="test", kind="unix")
+                TransportConfig(address=path, source="test", kind="unix")
             )
             assert result.ok is True
             assert result.kind == "unix"
         finally:
             server.close()
             await server.wait_closed()
+            import shutil
+            shutil.rmtree(sock_dir, ignore_errors=True)
 
     asyncio.run(scenario())
+
