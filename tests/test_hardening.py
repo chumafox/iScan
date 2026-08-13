@@ -40,6 +40,32 @@ def test_collection_timeout_creates_partial_report(monkeypatch, fake_lockdown):
     assert any(issue.collector == "battery" for issue in report.issues)
 
 
+def test_slow_first_collector_does_not_starve_later_ones(monkeypatch, fake_lockdown):
+    """A timed-out service must not consume the timeout budget of siblings.
+
+    The old gather()+Lock design counted lock-wait against every collector, so
+    a slow device_info made battery/storage/components time out without running.
+    """
+    from iscan.collectors import battery as battery_mod
+    from iscan.collectors import device_info
+    from iscan.models import Battery
+
+    async def slow(_lockdown):
+        await asyncio.sleep(0.08)
+        return device_info.collect(_lockdown)
+
+    async def instant(_lockdown):
+        return battery_mod.collect(_lockdown)
+
+    monkeypatch.setattr(device_info, "collect_async", slow)
+    monkeypatch.setattr(battery_mod, "collect_async", instant)
+    report = asyncio.run(collect_all(fake_lockdown, timeout=0.02))
+    assert report.collection["device_info"]["status"] == "timeout"
+    assert report.collection["battery"]["status"] != "timeout"
+    assert isinstance(report.battery, Battery)
+    assert report.battery.cycle_count == 127
+
+
 def test_progress_events_are_json_lines(capsys):
     from iscan.cli import Progress
 

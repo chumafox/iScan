@@ -377,6 +377,27 @@ def _safe_error_detail(exc: BaseException) -> str:
     return text[:240] or exc.__class__.__name__
 
 
+def socket_privacy_warning(config: TransportConfig) -> Optional[str]:
+    """Return a warning when a custom UNIX socket is world-accessible.
+
+    The system usbmuxd socket is intentionally shared.  NetworkUSB sockets
+    must not be: they expose a remote iPhone to every local account.
+    """
+
+    if config.kind != "unix" or not config.address:
+        return None
+    try:
+        mode = stat.S_IMODE(os.stat(config.address).st_mode)
+    except OSError:
+        return None
+    if mode & 0o077:
+        return (
+            f"{config.address} is mode {oct(mode)}; "
+            "NetworkUSB sockets should be 0600 or 0700"
+        )
+    return None
+
+
 def endpoint_is_socket(address: Optional[str]) -> bool:
     """Small synchronous helper used by tests and diagnostics."""
 

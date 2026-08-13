@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from iscan import __version__ as _ISCAN_VERSION
+
 
 @dataclass
 class DeviceInfo:
@@ -100,7 +102,7 @@ class DiagnosticReport:
     generated_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
     )
-    iscan_version: str = "0.2.0"
+    iscan_version: str = _ISCAN_VERSION
     transport: TransportInfo = field(default_factory=TransportInfo)
     # Per-collector machine-readable status.  Values are deliberately simple
     # dicts so they can be serialized without a custom JSON encoder.

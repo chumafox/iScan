@@ -58,7 +58,6 @@ def classify_connection_error(exc: BaseException) -> DeviceConnectionError:
             "not connected",
             "unable to find",
             "device not found",
-            "list index out of range",
         )
     ):
         return DeviceConnectionError(
@@ -92,8 +91,7 @@ def classify_connection_error(exc: BaseException) -> DeviceConnectionError:
             "connect call failed",
             "no such file",
             "broken pipe",
-            "socket",
-            "usbmux",
+            "usbmuxd",
             "connectionfailedtousbmuxd",
             "timed out",
         )

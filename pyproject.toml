@@ -4,21 +4,34 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iscan"
-version = "0.2.0"
+version = "0.2.1"
 description = "iOS device diagnostics CLI — generates beautiful HTML reports (3uTools alternative)"
 requires-python = ">=3.11"
 dependencies = [
-    "pymobiledevice3>=4.0.0",
+    "pymobiledevice3>=4.0.0,<5",
     "typer>=0.12.0",
     "rich>=13.0.0",
     "jinja2>=3.1.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0.0", "pytest-cov"]
+dev = ["pytest>=8.0.0", "pytest-cov", "ruff>=0.6"]
 
 [project.scripts]
 iscan = "iscan.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/iscan"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+# Keep CI on correctness; the older modules still use Optional[] / typer.Option defaults.
+select = ["E9", "F"]
+ignore = ["E501"]

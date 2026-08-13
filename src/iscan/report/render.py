@@ -7,10 +7,22 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from iscan.catalog import FACTORY_MAX_STORAGE_GIB
 from iscan.models import DiagnosticReport
 from iscan.report.i18n import get_strings
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+_ENV: Environment | None = None
+
+
+def _jinja_env() -> Environment:
+    global _ENV
+    if _ENV is None:
+        _ENV = Environment(
+            loader=FileSystemLoader(str(TEMPLATES_DIR)),
+            autoescape=select_autoescape(enabled_extensions=("html", "j2", "xml")),
+        )
+    return _ENV
 
 
 def _fmt_bytes(value: Any) -> str | None:
@@ -28,13 +40,13 @@ def _decode_display_vendor(serial: str | None) -> str:
         return ""
     prefix = serial[:3].upper()
     if prefix in {"G9Q", "G9N", "G9P", "G3H", "GH"}:
-        return "Samsung (inferred)"
+        return "Samsung"
     if prefix in {"F7C", "DKH", "H3", "H4"}:
-        return "LG Display (inferred)"
+        return "LG Display"
     if prefix in {"C11", "FVQ", "C3F"}:
-        return "Sharp (inferred)"
+        return "Sharp"
     if prefix in {"DSH", "DOP", "BOE", "F8C"}:
-        return "BOE (inferred)"
+        return "BOE"
     return ""
 
 
@@ -43,11 +55,11 @@ def _decode_battery_vendor(serial: str | None) -> str:
         return ""
     prefix = serial[:3].upper()
     if prefix in {"F5D", "F6D", "DY9", "F2D"}:
-        return "Desay (inferred)"
+        return "Desay"
     if prefix in {"F7D", "F8Y", "F9G", "C8A", "C8W"}:
-        return "Sunwoda (inferred)"
+        return "Sunwoda"
     if prefix in {"D85", "D8D", "D8T"}:
-        return "ATL (inferred)"
+        return "ATL"
     return ""
 
 
@@ -56,9 +68,9 @@ def _decode_biometric_vendor(serial: str | None) -> str:
         return ""
     prefix = serial[:3].upper()
     if prefix in {"FWP", "F0X", "F7C"}:
-        return "LG Innotek (inferred)"
+        return "LG Innotek"
     if prefix.startswith("ME") or prefix == "PER":
-        return "STMicroelectronics (inferred)"
+        return "STMicroelectronics"
     return ""
 
 
@@ -95,7 +107,7 @@ def _get_component_statuses(report: DiagnosticReport) -> dict[str, str]:
     # A capacity above the documented factory maximum is an anomaly worth
     # flagging, not proof that a board was replaced.  Keep the conservative
     # check that existed in 0.1 for the most common expansion case.
-    factory_max_gib = {"iPhone13,1": 256}.get(report.device.product_type or "")
+    factory_max_gib = FACTORY_MAX_STORAGE_GIB.get(report.device.product_type or "")
     if factory_max_gib and report.storage.total_capacity:
         if report.storage.total_capacity > factory_max_gib * 1.08 * 1024**3:
             statuses["ssd"] = "replaced"
@@ -121,11 +133,7 @@ def _health_color(health: float | None) -> str:
 def render_html(report: DiagnosticReport, lang: str = "en") -> str:
     """Render a self-contained, escaped HTML report."""
 
-    env = Environment(
-        loader=FileSystemLoader(str(TEMPLATES_DIR)),
-        autoescape=select_autoescape(enabled_extensions=("html", "j2", "xml")),
-    )
-    template = env.get_template("report.html.j2")
+    template = _jinja_env().get_template("report.html.j2")
     strings = get_strings(lang)
     storage_fmt = {
         "total": _fmt_bytes(report.storage.total_capacity),

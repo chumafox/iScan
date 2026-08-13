@@ -190,11 +190,11 @@
         {{ row(s.mlb, r.components.mlb_serial, 'mlb') }}
         {{ row(s.wifi_board, r.components.wireless_board_serial, 'wifi') }}
         {{ row(s.ssd, r.components.ssd_serial, 'ssd') }}
-        {{ row(s.display, r.components.display_serial, 'display', muted=decoded.display) }}
+        {{ row(s.display, r.components.display_serial, 'display', muted=(decoded.display ~ ' · ' ~ s.inferred) if decoded.display else none) }}
         {{ row(s.touch_screen, r.components.touch_serial, 'touch') }}
         {{ row(s.rear_camera, r.components.rear_camera_serial, 'rear_camera') }}
         {{ row(s.front_camera, r.components.front_camera_serial, 'front_camera') }}
-        {{ row(s.biometric, r.components.biometric_serial, 'biometric', muted=decoded.biometric) }}
+        {{ row(s.biometric, r.components.biometric_serial, 'biometric', muted=(decoded.biometric ~ ' · ' ~ s.inferred) if decoded.biometric else none) }}
         {{ row(s.als, r.components.als_serial, 'als') }}
     </section>
 
