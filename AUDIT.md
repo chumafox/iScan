@@ -157,7 +157,7 @@ export USBMUXD_SOCKET_ADDRESS=unix:/tmp/usbmuxd.sock
 
 **Инфра.**
 
-- CI добавлен (`.github/workflows/test.yml`). Дальше: pin pymobiledevice3 minor, mypy, интеграционный job с mock NetworkUSB.
+- CI: в этой ветке не пушился GitHub Actions workflow (у GitHub App нет `workflows` permission). Локально: `pip install -e ".[dev]" && pytest -q`. Дальше: pin pymobiledevice3 minor, mypy, интеграционный job с mock NetworkUSB.
 - Нет LICENSE в обоих репозиториях — для внутреннего магазинного софта всё равно стоит зафиксировать.
 
 ## 6. Контракт, который надо держать в обоих репо
