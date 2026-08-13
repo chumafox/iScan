@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import socket
+import tempfile
 
 from iscan.transport import (
     address_kind,
@@ -37,8 +38,6 @@ def test_transport_precedence_and_legacy_env():
     assert config.source == "env:PYMOBILEDEVICE3_USBMUX"
 
 
-import tempfile
-
 def test_active_networkusb_metadata_is_used_only_for_a_live_socket(tmp_path, monkeypatch):
     sock_dir = tempfile.mkdtemp(dir="/tmp", prefix="isock_")
     socket_path = os.path.join(sock_dir, "bridge.sock")
@@ -68,6 +67,28 @@ def test_active_networkusb_metadata_is_used_only_for_a_live_socket(tmp_path, mon
     finally:
         server.close()
         import shutil
+        shutil.rmtree(sock_dir, ignore_errors=True)
+
+
+def test_socket_privacy_warning_for_world_accessible_unix_socket():
+    from iscan.transport import TransportConfig, socket_privacy_warning
+
+    sock_dir = tempfile.mkdtemp(dir="/tmp", prefix="ipriv_")
+    path = os.path.join(sock_dir, "open.sock")
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(path)
+    try:
+        os.chmod(path, 0o777)
+        warning = socket_privacy_warning(TransportConfig(address=path, kind="unix", source="cli"))
+        assert warning is not None
+        assert "0777" in warning or "0o777" in warning
+        os.chmod(path, 0o700)
+        assert socket_privacy_warning(TransportConfig(address=path, kind="unix", source="cli")) is None
+        assert socket_privacy_warning(TransportConfig(kind="system")) is None
+    finally:
+        server.close()
+        import shutil
+
         shutil.rmtree(sock_dir, ignore_errors=True)
 
 

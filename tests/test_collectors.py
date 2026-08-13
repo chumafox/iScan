@@ -1,6 +1,4 @@
 from iscan.collectors import device_info, battery, storage
-from iscan.collectors import components as comp_collector
-import pytest
 
 def test_device_info(fake_lockdown):
     info = device_info.collect(fake_lockdown)
@@ -21,6 +19,7 @@ def test_battery(fake_lockdown):
     assert bat.health_percent is not None
     assert 90 <= bat.health_percent <= 100  # 3120/3274 ≈ 95.3%
     assert bat.battery_serial == 'F9RNXBT0ABCD'
+    assert bat.is_charging is False
 
 def test_storage(fake_lockdown):
     st = storage.collect(fake_lockdown)

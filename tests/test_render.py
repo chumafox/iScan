@@ -6,7 +6,6 @@ import asyncio
 
 def test_render_en(fake_lockdown, monkeypatch):
     """HTML renders without errors in English."""
-    import iscan.collectors.components as comp_mod
     # patch DiagnosticsService to avoid real device
     from tests.conftest import FakeDiagnosticsService
     try:

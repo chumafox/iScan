@@ -1,6 +1,6 @@
 # iScan
 
-![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)
 
 **iScan** is a cross-platform iOS diagnostics CLI that generates a self-contained HTML report. It is designed to work with a local `usbmuxd` socket and with [NetworkUSB](https://github.com/chumafox/NetworkUSB), which exposes an iPhone attached to another Mac as a local socket.
 
@@ -12,6 +12,8 @@
 - `report --json-progress` emits a stable JSON-lines contract for NetworkUSB's menu-bar client.
 - Collectors run independently with per-service timeouts. A missing battery or IORegistry service no longer destroys the whole report.
 - Reports record transport provenance and collection status, escape device-controlled values, contain no machine-local image paths and are written atomically.
+- Collectors run one lockdown service at a time. A slow first service no longer starves battery/storage/components of their timeout.
+- `report --json` writes a sidecar next to the HTML for supervisors that should not parse markup.
 - `list` no longer assumes every device must be labelled `USB`; this matters for remote and Wi-Fi mux connections.
 
 ## Installation
@@ -76,6 +78,7 @@ If NetworkUSB writes `~/.cache/networkusb/active.json`, iScan may discover it wh
 
 ```bash
 iscan report --usbmux-address /tmp/usbmuxd.sock --json-progress
+iscan report --json   # HTML + .json sidecar
 ```
 
 The machine-readable output is one JSON object per line and is safe for a supervisor to consume without parsing human text:

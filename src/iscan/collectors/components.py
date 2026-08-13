@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 from typing import Any
 
@@ -14,11 +13,6 @@ from iscan.collectors.common import (
     value_by_normalized_key,
 )
 from iscan.models import Components
-
-# This flag is understood by pymobiledevice3 releases that need the userspace
-# tunnel for IORegistry.  It is set before importing the library, as required
-# by those releases.
-os.environ.setdefault("PYMOBILEDEVICE3_USERSPACE", "1")
 
 
 def _decode_bytes(value: Any) -> str:
@@ -141,7 +135,7 @@ def _apply_gestalt(component: Components, values: Mapping[str, Any]) -> None:
             setattr(component, field, _serial(first_value(dict(values), keys)))
 
 
-async def _collect_async(lockdown) -> Components:
+async def collect_async(lockdown) -> Components:
     component = Components()
     try:
         values = lockdown.all_values

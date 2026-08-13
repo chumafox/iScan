@@ -143,11 +143,12 @@ async def collect_all(
     transport: Optional[TransportConfig | TransportInfo] = None,
     progress: Optional[ProgressCallback] = None,
 ) -> DiagnosticReport:
-    """Collect all report sections concurrently, independently and fail-soft.
+    """Collect all report sections independently and fail-soft.
 
-    NetworkUSB is a byte tunnel: a slow service must not make the entire CLI
-    wait forever.  Every optional service therefore has its own timeout and a
-    missing battery/IORegistry response still produces a useful device report.
+    NetworkUSB is a byte tunnel and LockdownClient is not re-entrant, so
+    collectors run one after another. Every optional service still has its
+    own timeout: a missing battery/IORegistry response does not destroy the
+    rest of the report, and a slow first service cannot starve later ones.
     """
 
     if timeout <= 0:
@@ -175,34 +176,29 @@ async def collect_all(
 
     from iscan.models import Battery, Components, DeviceInfo, Storage
 
+    # LockdownClient is not re-entrant: AFC + diagnostics on the same mux
+    # session can interleave and look like a dead NetworkUSB tunnel.
+    # The previous gather()+Lock design was worse than sequential — each
+    # collector's wait_for() included time spent waiting for the lock, so a
+    # slow first service made battery/storage/components time out without
+    # running. Run one service at a time; each still gets a full timeout.
     jobs = (
         ("device_info", lambda: device_info.collect_async(lockdown), DeviceInfo),
         ("battery", lambda: battery.collect_async(lockdown), Battery),
         ("storage", lambda: storage.collect_async(lockdown), Storage),
-        ("components", lambda: components._collect_async(lockdown), Components),
+        ("components", lambda: components.collect_async(lockdown), Components),
     )
-
-    lockdown_lock = asyncio.Lock()
-
-    async def _locked_factory(factory_fn):
-        async with lockdown_lock:
-            return await factory_fn()
-
-    tasks = [
-        asyncio.create_task(
-            _run_collector(
-                name,
-                lambda fn=factory: _locked_factory(fn),
-                empty_factory,
-                report,
-                timeout=timeout,
-                progress=progress,
-            ),
-            name=f"iscan-collector-{name}",
+    values = [
+        await _run_collector(
+            name,
+            factory,
+            empty_factory,
+            report,
+            timeout=timeout,
+            progress=progress,
         )
         for name, factory, empty_factory in jobs
     ]
-    values = await asyncio.gather(*tasks)
     report.device, report.battery, report.storage, report.components = values
 
     await _emit(
